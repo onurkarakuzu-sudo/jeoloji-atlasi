@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <div id="map" role="application" aria-label="Jeoloji haritası"></div>
@@ -65,6 +65,17 @@
       <label><input type="radio" name="bm" value="osm"> OSM</label>
       <label><input type="radio" name="bm" value="none"> Yok</label>
     </div>
+    <div class="seg" style="margin-top:6px">
+      <label><input type="radio" name="bm" value="groad"> Google Harita</label>
+      <label><input type="radio" name="bm" value="gsat"> Google Uydu</label>
+      <label><input type="radio" name="bm" value="ghyb"> Google Uydu + yollar</label>
+      <label><input type="radio" name="bm" value="gter"> Google Arazi</label>
+    </div>
+    <details class="gk"><summary>Google API anahtarı</summary>
+      <p class="note">Google altlıkları, Google'ın resmî Map Tiles API'si üzerinden <b>sizin</b> Google Maps Platform API anahtarınızla açılır (Google Cloud Console → “Map Tiles API”yi etkinleştirip anahtar oluşturun; aylık ücretsiz kullanım kotası vardır). Anahtar yalnızca bu tarayıcıda saklanır.</p>
+      <div class="row2"><input id="gkey" type="password" placeholder="AIza…" autocomplete="off" aria-label="Google Maps API anahtarı"><button class="btn" id="gsave" type="button">Kaydet</button></div>
+      <div class="note" id="gstat"></div>
+    </details>
     <div class="row2"><label><input type="checkbox" id="hill" checked> Kabartma gölgesi</label></div>
     <div class="row2"><label><input type="checkbox" id="t3d"> 3B arazi</label>
       <label class="rng">abartı <input type="range" id="exag" min="1" max="4" step="0.5" value="1.5"><span id="exagV" class="num">1.5×</span></label></div>
@@ -105,6 +116,6 @@
 <script src="vendor/maplibre-gl.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/togeojson.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

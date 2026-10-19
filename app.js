@@ -159,10 +159,25 @@ $('#q').addEventListener('input',()=>{const q=norm($('#q').value.trim());const b
 $('#q').addEventListener('keydown',e=>{if(e.key==='Escape'){$('#q').value='';$('#qres').hidden=true;searchSet=null;legendFocus=null;applyFocus();renderLegend()}});
 
 /* ---------- layers ---------- */
-function setBasemap(v){BM=v;Object.keys(BASEMAPS).forEach(k=>map.getLayer('bm-'+k)&&map.setLayoutProperty('bm-'+k,'visibility',v===k?'visible':'none'));const r=$(`#basemaps input[value="${v}"]`);if(r)r.checked=true}
+/* Google Map Tiles API (resmî; kullanıcının kendi API anahtarı ile) */
+const GTYPES={groad:{mapType:'roadmap'},gsat:{mapType:'satellite'},ghyb:{mapType:'satellite',layerTypes:['layerRoadmap']},gter:{mapType:'terrain',layerTypes:['layerRoadmap']}};
+const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}}, lsSet=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}};
+async function ensureGoogle(v){if(map.getLayer('bm-'+v))return true;const key=($('#gkey').value||'').trim();
+  if(!key){setHint('Google altlığı için Katmanlar sekmesine Google Maps API anahtarınızı girin.');showTab('t-layers');return false}
+  try{const r=await fetch('https://tile.googleapis.com/v1/createSession?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...GTYPES[v],language:'tr-TR',region:'TR'})});
+    const j=await r.json();if(!r.ok||!j.session)throw new Error((j.error&&j.error.message)||('HTTP '+r.status));
+    map.addSource('bm-'+v,{type:'raster',tiles:[`https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${j.session}&key=${encodeURIComponent(key)}`],tileSize:j.tileWidth||256,maxzoom:22,attribution:'Harita verileri ©'+new Date().getFullYear()+' Google'});
+    map.addLayer({id:'bm-'+v,type:'raster',source:'bm-'+v,layout:{visibility:'none'}},'bm-etopo');BASEMAPS[v]={google:1};return true}
+  catch(err){setHint('Google altlığı açılamadı: '+err.message);return false}}
+async function setBasemap(v){if(GTYPES[v]&&!(await ensureGoogle(v))){const r=$(`#basemaps input[value="${BM}"]`);if(r)r.checked=true;return}
+  BM=v;Object.keys(BASEMAPS).forEach(k=>map.getLayer('bm-'+k)&&map.setLayoutProperty('bm-'+k,'visibility',v===k?'visible':'none'));const r=$(`#basemaps input[value="${v}"]`);if(r)r.checked=true}
 $$('#basemaps input').forEach(r=>r.onchange=()=>setBasemap(r.value));
+$('#gkey').value=lsGet('gkey')||'';
+$('#gsave').onclick=()=>{const k=$('#gkey').value.trim();lsSet('gkey',k);Object.keys(GTYPES).forEach(v=>{if(map.getLayer('bm-'+v)){map.removeLayer('bm-'+v);map.removeSource('bm-'+v);delete BASEMAPS[v]}});
+  $('#gstat').textContent=k?'Anahtar bu tarayıcıda kaydedildi. Bir Google altlığı seçin.':'Anahtar silindi.';if(GTYPES[BM])setBasemap('etopo')};
 // altlık karoları yüklenemezse otomatik olarak sıradaki altlığa geç
 map.on('error',e=>{const id=e.sourceId||'';if(!id.startsWith('bm-'))return;const k=id.slice(3);bmErr[k]=(bmErr[k]||0)+1;
+  if(GTYPES[k])return;
   if(k===BM&&bmErr[k]===6){const order=['etopo','osm','sat','topo'].filter(x=>(bmErr[x]||0)<6);if(order.length){setBasemap(order[0]);setHint('Altlık yüklenemedi, '+({etopo:'Esri Topoğrafya',osm:'OSM',sat:'Uydu',topo:'OpenTopoMap'})[order[0]]+' altlığına geçildi.')}}});
 $('#hill').onchange=e=>map.setLayoutProperty('hill','visibility',e.target.checked?'visible':'none');
 function setTerrain(){const on=$('#t3d').checked,ex=+$('#exag').value;$('#exagV').textContent=ex+'×';

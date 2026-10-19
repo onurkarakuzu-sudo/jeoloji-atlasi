@@ -93,3 +93,6 @@ body.drop #map::after{content:"Dosyayı bırakın (KML / KMZ / GeoJSON / GPX)";p
 .opq{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:5px 10px;font-weight:500}
 .opq input{width:120px}
 #sheetBox{margin:12px 0 4px;padding-top:8px;border-top:1px solid var(--line)}
+
+.gk{margin:8px 0 4px;font-size:13px}.gk summary{cursor:pointer;color:var(--accent2)}
+#gkey{flex:1;min-width:0;font:inherit;padding:6px 8px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
