@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Batı Toroslar Jeoloji Atlası</title>
+<meta name="description" content="MTA 1:100.000 jeoloji paftalarının vektör ve görüntü katmanları; birim bilgisi, stratigrafik dikme kesit, topoğrafik-jeolojik kesit ve 3B görünüm.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="map" role="application" aria-label="Jeoloji haritası"></div>
+
+<header class="bar">
+  <div class="brand"><h1>Batı Toroslar Jeoloji Atlası</h1><span class="sub">MTA 1:100.000 · <span id="stat">yükleniyor…</span></span></div>
+  <div class="search">
+    <label for="q" class="vh">Birim ara</label>
+    <input id="q" type="search" placeholder="Birim ara: kod, ad, litoloji (örn. Tmav, kireçtaşı, Jura)" autocomplete="off">
+    <div id="qres" class="qres" hidden></div>
+  </div>
+  <div class="modes" role="group" aria-label="Araç">
+    <button data-mode="info" aria-pressed="true">Bilgi</button>
+    <button data-mode="section" aria-pressed="false">Kesit</button>
+    <button data-mode="measure" aria-pressed="false">Ölçüm</button>
+  </div>
+</header>
+
+<aside class="panel" id="panel">
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="t-info" aria-selected="true">Birim</button>
+    <button role="tab" data-tab="t-legend" aria-selected="false">Lejant</button>
+    <button role="tab" data-tab="t-layers" aria-selected="false">Katmanlar</button>
+    <button role="tab" data-tab="t-section" aria-selected="false">Kesit</button>
+    <button class="collapse" id="collapse" aria-label="Paneli daralt">▾</button>
+  </nav>
+
+  <section id="t-info" class="tab">
+    <div id="unitBody" class="muted">Haritada bir noktaya tıklayın. Formasyonun yaşı, litolojisi, tektonik birimi ve paftanın stratigrafik dizilimi burada görünür.</div>
+    <div id="colWrap" hidden>
+      <div class="eyebrow">Stratigrafik dikme kesit · <span id="colSheet"></span></div>
+      <p class="note">Lejant sırası (genç → yaşlı). ● seçilen birim; ▲/▼ seçilen poligonun haritadaki sınır komşusu olan genç/yaşlı birimler. Kalınlıklar ölçekli değildir.</p>
+      <div class="col" id="colList"></div>
+    </div>
+  </section>
+
+  <section id="t-legend" class="tab" hidden>
+    <label for="legSheet" class="eyebrow">Pafta</label>
+    <select id="legSheet"></select>
+    <p class="note">Bir birime tıklayınca haritada yalnız o birim vurgulanır; yeniden tıklayınca vurgu kalkar.</p>
+    <div class="col" id="legList"></div>
+  </section>
+
+  <section id="t-layers" class="tab" hidden>
+    <div class="eyebrow">Altlık</div>
+    <div class="seg" id="basemaps">
+      <label><input type="radio" name="bm" value="topo" checked> Topoğrafya</label>
+      <label><input type="radio" name="bm" value="sat"> Uydu</label>
+      <label><input type="radio" name="bm" value="osm"> OSM</label>
+      <label><input type="radio" name="bm" value="none"> Yok</label>
+    </div>
+    <div class="row2"><label><input type="checkbox" id="hill" checked> Kabartma gölgesi</label></div>
+    <div class="row2"><label><input type="checkbox" id="t3d"> 3B arazi</label>
+      <label class="rng">abartı <input type="range" id="exag" min="1" max="4" step="0.5" value="1.5"><span id="exagV" class="num">1.5×</span></label></div>
+
+    <div class="eyebrow">Vektör katmanlar</div>
+    <div class="row2"><label><input type="checkbox" id="geoOn" checked> Jeoloji birimleri</label>
+      <label class="rng">şeffaflık <input type="range" id="geoOp" min="0" max="1" step="0.05" value="0.72"></label></div>
+    <div class="row2"><label><input type="checkbox" id="faultOn" checked> Diri faylar (MTA)</label></div>
+    <div class="row2"><label><input type="checkbox" id="sheetOn" checked> Pafta sınırları</label></div>
+
+    <div class="eyebrow">Taranmış paftalar <span class="muted">(<span id="ovCount">0</span> açık)</span></div>
+    <div class="row2"><button class="btn" id="ovAll">Tümünü aç</button><button class="btn" id="ovNone">Tümünü kapat</button>
+      <label class="rng">şeffaflık <input type="range" id="ovOp" min="0" max="1" step="0.05" value="0.85"></label></div>
+    <div id="ovList" class="ovlist"></div>
+  </section>
+
+  <section id="t-section" class="tab" hidden>
+    <div id="secBody" class="muted">Üstten “Kesit” aracını seçin, haritada A ve A' noktalarına tıklayın. Yükseklikler arazi modelinden (AWS Terrain Tiles, ~30 m) tarayıcıda okunur.</div>
+    <div class="row2" id="secCtrl" hidden>
+      <label for="vex">Düşey abartı</label>
+      <select id="vex"><option value="1">1×</option><option value="2">2×</option><option value="3" selected>3×</option><option value="5">5×</option><option value="10">10×</option></select>
+      <button class="btn" id="dlSvg">SVG indir</button><button class="btn" id="dlCsv">CSV indir</button>
+    </div>
+    <div class="status" id="secStatus"></div>
+    <div class="secsvg" id="secSvg" hidden></div>
+    <table class="cross" id="secTable" hidden><thead><tr><th>Km</th><th>Birim</th><th>Yaş</th><th>Litoloji</th></tr></thead><tbody></tbody></table>
+  </section>
+</aside>
+
+<div class="hint" id="hint">Veri yükleniyor…</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
