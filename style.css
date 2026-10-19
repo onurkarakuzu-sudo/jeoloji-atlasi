@@ -89,3 +89,7 @@ table.cross th{font-weight:500;color:var(--mute)}
 body.drop #map::after{content:"Dosyayı bırakın (KML / KMZ / GeoJSON / GPX)";position:absolute;inset:12px;border:3px dashed var(--accent);background:rgba(255,255,255,.55);display:flex;align-items:center;justify-content:center;font:600 20px var(--f-ui);color:var(--ink);z-index:20;pointer-events:none}
 #userList:empty{display:none}
 #userList label span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.opq{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:5px 10px;font-weight:500}
+.opq input{width:120px}
+#sheetBox{margin:12px 0 4px;padding-top:8px;border-top:1px solid var(--line)}

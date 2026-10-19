@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <div id="map" role="application" aria-label="Jeoloji haritası"></div>
@@ -26,6 +26,7 @@
     <button data-mode="measure" aria-pressed="false">Ölçüm</button>
   </div>
   <div class="modes"><button id="b3d" aria-pressed="false" title="3B arazi görünümü">3B</button><button id="ubtn" title="KML, KMZ, GeoJSON veya GPX dosyası yükle">KML yükle</button></div>
+  <label class="opq" title="Vektör jeoloji haritasının opaklığı; sola çekince altlık görünür">Vektör <input type="range" id="opQuick" min="0" max="1" step="0.05" value="0.55" aria-label="Vektör harita opaklığı"> <span id="opV" class="num">55%</span></label>
   <input type="file" id="ufile" accept=".kml,.kmz,.geojson,.json,.gpx" multiple hidden>
 </header>
 
@@ -40,6 +41,7 @@
 
   <section id="t-info" class="tab">
     <div id="unitBody" class="muted">Haritada bir noktaya tıklayın. Formasyonun yaşı, litolojisi, tektonik birimi ve paftanın stratigrafik dizilimi burada görünür.</div>
+    <div id="sheetBox" hidden></div>
     <div id="colWrap" hidden>
       <div class="eyebrow">Stratigrafik dikme kesit · <span id="colSheet"></span></div>
       <p class="note">Lejant sırası (genç → yaşlı). ● seçilen birim; ▲/▼ seçilen poligonun haritadaki sınır komşusu olan genç/yaşlı birimler. Kalınlıklar ölçekli değildir.</p>
@@ -73,9 +75,11 @@
 
     <div class="eyebrow">Vektör katmanlar</div>
     <div class="row2"><label><input type="checkbox" id="geoOn" checked> Jeoloji birimleri</label>
-      <label class="rng">şeffaflık <input type="range" id="geoOp" min="0" max="1" step="0.05" value="0.55"></label></div>
+      <label class="rng">opaklık <input type="range" id="geoOp" min="0" max="1" step="0.05" value="0.55"></label></div>
     <div class="row2"><label><input type="checkbox" id="faultOn" checked> Diri faylar (MTA)</label></div>
-    <div class="row2"><label><input type="checkbox" id="sheetOn" checked> Pafta sınırları</label></div>
+    <div class="row2"><label><input type="checkbox" id="lblOn" checked> Formasyon kısaltmaları</label></div>
+    <div class="row2"><label><input type="checkbox" id="pidxOn" checked> 1:100.000 pafta indeksi</label></div>
+    <div class="row2"><label><input type="checkbox" id="sheetOn"> Taranmış pafta çerçeveleri</label></div>
 
     <div class="eyebrow">Taranmış paftalar <span class="muted">(<span id="ovCount">0</span> açık)</span></div>
     <div class="row2"><button class="btn" id="ovAll">Tümünü aç</button><button class="btn" id="ovNone">Tümünü kapat</button>
@@ -101,6 +105,6 @@
 <script src="vendor/maplibre-gl.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/togeojson.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

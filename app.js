@@ -11,7 +11,7 @@ const BASEMAPS={
   sat:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],max:19,attr:'Görüntü © Esri, Maxar, Earthstar Geographics'},
   osm:{tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],max:19,attr:'© OpenStreetMap katkıcıları'}
 };
-let BM='etopo', bmErr={};
+let BM='etopo', bmErr={}, PIDX=[], hiddenSheets=new Set();
 let GEO=null, UNITS=null, OVS=[], idx=[], grid=new Map(); const CELL=0.05;
 let mode='info', selected=null, legendFocus=null, searchSet=null;
 let A=null, secPts=null, lastSec=null, measurePts=[];
@@ -52,6 +52,16 @@ map.on('load',async()=>{
   map.addLayer({id:'frames-lbl',type:'symbol',source:'frames',layout:{'text-field':['get','t'],'text-font':['Open Sans Semibold'],'text-size':12,'symbol-placement':'point'},paint:{'text-color':'#333','text-halo-color':'#fff','text-halo-width':1.5}});
   map.addSource('user',{type:'geojson',data:emptyFC()});
   addUserLayers();
+  // formasyon kısaltmaları
+  map.addSource('glbl',{type:'geojson',data:'data/labels.geojson'});
+  map.addLayer({id:'geo-lbl',type:'symbol',source:'glbl',minzoom:9,layout:{'text-field':['get','k'],'text-font':['Open Sans Semibold'],'text-size':['interpolate',['linear'],['zoom'],9,10,13,13],'symbol-sort-key':['-',0,['get','a']],'text-padding':3},paint:{'text-color':'#1a1a1a','text-halo-color':'rgba(255,255,255,.9)','text-halo-width':1.4}});
+  // 1:100.000 pafta indeksi
+  map.addSource('pidx',{type:'geojson',data:'data/pafta_index.geojson'});
+  map.addLayer({id:'pidx-fill',type:'fill',source:'pidx',paint:{'fill-color':'#2f5d50','fill-opacity':['case',['==',['get','ov'],1],0.06,0]}});
+  map.addLayer({id:'pidx-line',type:'line',source:'pidx',paint:{'line-color':'#1d3b8a','line-width':['case',['==',['get','ov'],1],1.6,0.8],'line-opacity':0.8}});
+  map.addLayer({id:'pidx-lbl',type:'symbol',source:'pidx',layout:{'text-field':['get','id'],'text-font':['Open Sans Semibold'],'text-size':['interpolate',['linear'],['zoom'],6,10,10,15],'text-allow-overlap':false},paint:{'text-color':['case',['==',['get','ov'],1],'#b8320f','#1d3b8a'],'text-halo-color':'#fff','text-halo-width':1.6}});
+  ['frames','frames-lbl'].forEach(l=>map.setLayoutProperty(l,'visibility','none'));
+  fetch('data/pafta_index.geojson').then(r=>r.json()).then(j=>{PIDX=j.features});
   // drawing
   map.addSource('draw',{type:'geojson',data:emptyFC()});
   map.addLayer({id:'draw-line',type:'line',source:'draw',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':'#111','line-width':2.5}});
@@ -74,7 +84,7 @@ function buildIndex(){GEO.features.forEach((f,i)=>{f.properties._i=i;const b=bbo
   for(let gx=Math.floor(b[0]/CELL);gx<=Math.floor(b[2]/CELL);gx++)for(let gy=Math.floor(b[1]/CELL);gy<=Math.floor(b[3]/CELL);gy++){const k=gx+','+gy;if(!grid.has(k))grid.set(k,[]);grid.get(k).push(i)}})}
 function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
 function inGeom(x,y,g){const P=g.type==='Polygon'?[g.coordinates]:g.coordinates;for(const p of P){if(inRing(x,y,p[0])){let h=false;for(let k=1;k<p.length;k++)if(inRing(x,y,p[k])){h=true;break}if(!h)return true}}return false}
-function lookup(lon,lat){const c=grid.get(Math.floor(lon/CELL)+','+Math.floor(lat/CELL));if(!c)return null;for(const i of c){const b=idx[i];if(lon<b[0]||lon>b[2]||lat<b[1]||lat>b[3])continue;if(inGeom(lon,lat,GEO.features[i].geometry))return i}return null}
+function lookup(lon,lat){const c=grid.get(Math.floor(lon/CELL)+','+Math.floor(lat/CELL));if(!c)return null;for(const i of c){const b=idx[i];if(lon<b[0]||lon>b[2]||lat<b[1]||lat>b[3])continue;if(hiddenSheets.has(GEO.features[i].properties.s))continue;if(inGeom(lon,lat,GEO.features[i].geometry))return i}return null}
 function info(i){const p=GEO.features[i].properties,sh=UNITS[p.s];return{sheet:sh,u:sh.units[p.u],si:p.s,ui:p.u}}
 function neighbours(i){const f=GEO.features[i],b=idx[i],pad=0.0005,res=new Set(),s=f.properties.s;const cands=new Set();
   for(let gx=Math.floor((b[0]-pad)/CELL);gx<=Math.floor((b[2]+pad)/CELL);gx++)for(let gy=Math.floor((b[1]-pad)/CELL);gy<=Math.floor((b[3]+pad)/CELL);gy++)(grid.get(gx+','+gy)||[]).forEach(j=>cands.add(j));
@@ -100,7 +110,7 @@ const ln=c=>({type:'Feature',properties:{},geometry:{type:'LineString',coordinat
 /* ---------- click handling ---------- */
 map.on('click',e=>{if(!GEO)return;const c=[e.lngLat.lng,e.lngLat.lat];
   if(mode==='info'&&userPopup(e))return;
-  if(mode==='info'){const i=lookup(c[0],c[1]);showUnit(i,c);return}
+  if(mode==='info'){const i=lookup(c[0],c[1]);showUnit(i,c);sheetBox(c);return}
   if(mode==='section'){if(!A||lastSec&&lastSec.done){A=c;lastSec=null;setDraw([pt(A,'A')]);setHint("Kesit: bitiş noktası A' için tıklayın.");return}
     const B=c;setDraw([ln([A,B]),pt(A,'A'),pt(B,"A'")]);setHint('Kesit hesaplanıyor…');runSection(A,B);return}
   if(mode==='measure'){measurePts.push(c);drawMeasure()}});
@@ -232,6 +242,23 @@ $('#ubtn').onclick=()=>$('#ufile').click();
 ['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();document.body.classList.add('drop')}));
 ['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(t==='drop'||e.target===document.documentElement||!e.relatedTarget)document.body.classList.remove('drop')}));
 document.addEventListener('drop',e=>{if(e.dataTransfer&&e.dataTransfer.files.length)loadUserFiles([...e.dataTransfer.files])});
+
+/* ---------- pafta indeksi: tıklanan pafta için aç/kapat ---------- */
+function sheetAt(lon,lat){for(const f of PIDX){if(inRing(lon,lat,f.geometry.coordinates[0]))return f.properties.id}return null}
+function vecFilter(){const h=[...hiddenSheets];const f=h.length?['!',['in',['get','s'],['literal',h]]]:null;['geo-fill','geo-line'].forEach(l=>map.setFilter(l,f));map.setFilter('geo-lbl',f)}
+function sheetBox(c){const id=sheetAt(c[0],c[1]),box=$('#sheetBox');if(!id){box.hidden=true;return}
+  const o=OVS.find(x=>x.id===id),si=UNITS.findIndex(u=>u.id===id);
+  let h=`<div class="eyebrow">1:100.000 pafta · <span class="code">${esc(id)}</span>${o?' · '+esc(o.title):''}</div><div class="row2">`;
+  if(o){const on=map.getLayoutProperty('ov-'+id,'visibility')==='visible';h+=`<button class="btn" data-sov="${id}">${on?'Taranmış paftayı kapat':'Taranmış paftayı aç'}</button>`}
+  if(si>=0)h+=`<button class="btn" data-svec="${si}">${hiddenSheets.has(si)?'Vektör haritayı göster':'Vektör haritayı gizle'}</button>`;
+  if(!o&&si<0)h+='<span class="note">Bu pafta henüz atlasta yok.</span>';
+  box.innerHTML=h+'</div>';box.hidden=false;
+  const b1=box.querySelector('[data-sov]');if(b1)b1.onclick=()=>{const cb=$(`#ovList input[data-ov="${id}"]`);cb.checked=!cb.checked;cb.onchange();sheetBox(c)};
+  const b2=box.querySelector('[data-svec]');if(b2)b2.onclick=()=>{hiddenSheets.has(si)?hiddenSheets.delete(si):hiddenSheets.add(si);vecFilter();sheetBox(c)}}
+$('#pidxOn').onchange=e=>['pidx-fill','pidx-line','pidx-lbl'].forEach(l=>map.setLayoutProperty(l,'visibility',e.target.checked?'visible':'none'));
+$('#lblOn').onchange=e=>map.setLayoutProperty('geo-lbl','visibility',e.target.checked?'visible':'none');
+$('#opQuick').oninput=e=>{$('#geoOp').value=e.target.value;applyFocus();$('#opV').textContent=Math.round(e.target.value*100)+'%'};
+$('#geoOp').addEventListener('input',()=>{$('#opQuick').value=$('#geoOp').value;$('#opV').textContent=Math.round($('#geoOp').value*100)+'%'});
 
 /* ---------- elevation from terrarium tiles ---------- */
 const ZE=12, tileCache=new Map();
