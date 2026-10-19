@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <div id="map" role="application" aria-label="Jeoloji haritası"></div>
@@ -116,8 +116,10 @@
     <b>A4 çıktı</b>
     <label><input type="radio" name="pvo" value="L" checked> Yatay</label><label><input type="radio" name="pvo" value="P"> Dikey</label>
     <input id="pvTitle" value="Jeoloji Haritası" aria-label="Başlık"><input id="pvSub" placeholder="Alt başlık / proje adı (isteğe bağlı)" aria-label="Alt başlık">
+    <label title="Son alınan kesiti sayfanın altına ölçekli ekler"><input type="checkbox" id="pvSec" checked> Kesiti ekle</label>
+    <span class="pv-add"><input id="pvNoteT" value="İnceleme alanı" aria-label="Not yazısı"><select id="pvNoteS" aria-label="Sembol"><option value="poly">▢ alan</option><option value="pt">● nokta</option><option value="arrow">➜ ok</option><option value="none">yalnız yazı</option></select><button class="btn" id="pvAdd" type="button">Yazı / sembol ekle</button></span>
     <button class="btn" id="pvPrint">Yazdır / PDF</button><button class="btn" id="pvClose">Kapat</button><span id="pvWarn" class="status warn"></span>
-    <span class="note">Yazdırırken “Arka plan grafikleri” açık, kenar boşluğu “Varsayılan” olmalı. Haritayı değiştirmek için kapatıp görünümü ayarlayın ve yeniden “A4 Çıktı”ya basın.</span>
+    <span class="note">Yazdırırken “Arka plan grafikleri” açık, kenar boşluğu “Varsayılan” olmalı. Eklenen yazıyı ⠿ tutamağından sürükleyerek istediğiniz yere taşıyın; yazının üzerine tıklayıp değiştirebilirsiniz. Lejanttaki “İnceleme alanı” yazısı da tıklanıp düzenlenebilir. Haritayı değiştirmek için kapatıp görünümü ayarlayın ve yeniden “A4 Çıktı”ya basın.</span>
   </div>
   <div class="pv-wrap"><div id="pvPage" class="pv-page"></div></div>
   <style id="pvStyle"></style>
@@ -127,6 +129,6 @@
 <script src="vendor/maplibre-gl.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/togeojson.js"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
