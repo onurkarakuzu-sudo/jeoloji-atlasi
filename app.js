@@ -6,10 +6,12 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const TERRAIN='https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const BASEMAPS={
+  etopo:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],max:19,attr:'Altlık © Esri, HERE, Garmin, OpenStreetMap'},
   topo:{tiles:['https://a.tile.opentopomap.org/{z}/{x}/{y}.png','https://b.tile.opentopomap.org/{z}/{x}/{y}.png','https://c.tile.opentopomap.org/{z}/{x}/{y}.png'],max:17,attr:'© OpenTopoMap (CC-BY-SA), © OpenStreetMap'},
   sat:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],max:19,attr:'Görüntü © Esri, Maxar, Earthstar Geographics'},
   osm:{tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],max:19,attr:'© OpenStreetMap katkıcıları'}
 };
+let BM='etopo', bmErr={};
 let GEO=null, UNITS=null, OVS=[], idx=[], grid=new Map(); const CELL=0.05;
 let mode='info', selected=null, legendFocus=null, searchSet=null;
 let A=null, secPts=null, lastSec=null, measurePts=[];
@@ -23,7 +25,7 @@ map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-left');
 map.on('load',async()=>{
   for(const [k,b] of Object.entries(BASEMAPS)){
     map.addSource('bm-'+k,{type:'raster',tiles:b.tiles,tileSize:256,maxzoom:b.max,attribution:b.attr});
-    map.addLayer({id:'bm-'+k,type:'raster',source:'bm-'+k,layout:{visibility:k==='topo'?'visible':'none'}});
+    map.addLayer({id:'bm-'+k,type:'raster',source:'bm-'+k,layout:{visibility:k===BM?'visible':'none'}});
   }
   map.addSource('dem',{type:'raster-dem',tiles:[TERRAIN],encoding:'terrarium',tileSize:256,maxzoom:14,attribution:'Yükseklik: AWS Terrain Tiles (SRTM ve diğerleri)'});
   map.addSource('dem-h',{type:'raster-dem',tiles:[TERRAIN],encoding:'terrarium',tileSize:256,maxzoom:14});
@@ -37,7 +39,7 @@ map.on('load',async()=>{
     map.addSource('ov-'+ov.id,{type:'image',url:ov.img,coordinates:[[W,N],[E,N],[E,S],[W,S]]});
     map.addLayer({id:'ov-'+ov.id,type:'raster',source:'ov-'+ov.id,layout:{visibility:'none'},paint:{'raster-opacity':0.85,'raster-fade-duration':0}});});
   map.addSource('geo',{type:'geojson',data:GEO,promoteId:'_i'});
-  map.addLayer({id:'geo-fill',type:'fill',source:'geo',paint:{'fill-color':['get','c'],'fill-opacity':0.72}});
+  map.addLayer({id:'geo-fill',type:'fill',source:'geo',paint:{'fill-color':['get','c'],'fill-opacity':0.55}});
   map.addLayer({id:'geo-line',type:'line',source:'geo',paint:{'line-color':'#2b2b2b','line-width':['interpolate',['linear'],['zoom'],7,0.1,12,0.8],'line-opacity':0.6}});
   map.addLayer({id:'geo-sel',type:'line',source:'geo',filter:['==',['get','_i'],-1],paint:{'line-color':'#b8320f','line-width':3}});
   if(f){map.addSource('faults',{type:'geojson',data:f});
@@ -48,6 +50,8 @@ map.on('load',async()=>{
   map.addSource('frames',{type:'geojson',data:frames});
   map.addLayer({id:'frames',type:'line',source:'frames',paint:{'line-color':'#444','line-width':1,'line-dasharray':[3,3]}});
   map.addLayer({id:'frames-lbl',type:'symbol',source:'frames',layout:{'text-field':['get','t'],'text-font':['Open Sans Semibold'],'text-size':12,'symbol-placement':'point'},paint:{'text-color':'#333','text-halo-color':'#fff','text-halo-width':1.5}});
+  map.addSource('user',{type:'geojson',data:emptyFC()});
+  addUserLayers();
   // drawing
   map.addSource('draw',{type:'geojson',data:emptyFC()});
   map.addLayer({id:'draw-line',type:'line',source:'draw',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':'#111','line-width':2.5}});
@@ -95,6 +99,7 @@ const ln=c=>({type:'Feature',properties:{},geometry:{type:'LineString',coordinat
 
 /* ---------- click handling ---------- */
 map.on('click',e=>{if(!GEO)return;const c=[e.lngLat.lng,e.lngLat.lat];
+  if(mode==='info'&&userPopup(e))return;
   if(mode==='info'){const i=lookup(c[0],c[1]);showUnit(i,c);return}
   if(mode==='section'){if(!A||lastSec&&lastSec.done){A=c;lastSec=null;setDraw([pt(A,'A')]);setHint("Kesit: bitiş noktası A' için tıklayın.");return}
     const B=c;setDraw([ln([A,B]),pt(A,'A'),pt(B,"A'")]);setHint('Kesit hesaplanıyor…');runSection(A,B);return}
@@ -143,11 +148,17 @@ $('#q').addEventListener('input',()=>{const q=norm($('#q').value.trim());const b
 $('#q').addEventListener('keydown',e=>{if(e.key==='Escape'){$('#q').value='';$('#qres').hidden=true;searchSet=null;legendFocus=null;applyFocus();renderLegend()}});
 
 /* ---------- layers ---------- */
-$$('#basemaps input').forEach(r=>r.onchange=()=>{Object.keys(BASEMAPS).forEach(k=>map.setLayoutProperty('bm-'+k,'visibility',r.value===k?'visible':'none'))});
+function setBasemap(v){BM=v;Object.keys(BASEMAPS).forEach(k=>map.getLayer('bm-'+k)&&map.setLayoutProperty('bm-'+k,'visibility',v===k?'visible':'none'));const r=$(`#basemaps input[value="${v}"]`);if(r)r.checked=true}
+$$('#basemaps input').forEach(r=>r.onchange=()=>setBasemap(r.value));
+// altlık karoları yüklenemezse otomatik olarak sıradaki altlığa geç
+map.on('error',e=>{const id=e.sourceId||'';if(!id.startsWith('bm-'))return;const k=id.slice(3);bmErr[k]=(bmErr[k]||0)+1;
+  if(k===BM&&bmErr[k]===6){const order=['etopo','osm','sat','topo'].filter(x=>(bmErr[x]||0)<6);if(order.length){setBasemap(order[0]);setHint('Altlık yüklenemedi, '+({etopo:'Esri Topoğrafya',osm:'OSM',sat:'Uydu',topo:'OpenTopoMap'})[order[0]]+' altlığına geçildi.')}}});
 $('#hill').onchange=e=>map.setLayoutProperty('hill','visibility',e.target.checked?'visible':'none');
 function setTerrain(){const on=$('#t3d').checked,ex=+$('#exag').value;$('#exagV').textContent=ex+'×';
   if(on){map.setTerrain({source:'dem',exaggeration:ex});if(map.getPitch()<30)map.easeTo({pitch:60,duration:800})}else{map.setTerrain(null);map.easeTo({pitch:0,duration:600})}}
-$('#t3d').onchange=setTerrain;$('#exag').oninput=()=>{if($('#t3d').checked)setTerrain();else $('#exagV').textContent=$('#exag').value+'×'};
+$('#t3d').onchange=()=>{setTerrain();sync3d()};
+function sync3d(){$('#b3d').setAttribute('aria-pressed',$('#t3d').checked)}
+$('#b3d').onclick=()=>{$('#t3d').checked=!$('#t3d').checked;setTerrain();sync3d()};$('#exag').oninput=()=>{if($('#t3d').checked)setTerrain();else $('#exagV').textContent=$('#exag').value+'×'};
 $('#geoOn').onchange=e=>['geo-fill','geo-line'].forEach(l=>map.setLayoutProperty(l,'visibility',e.target.checked?'visible':'none'));
 $('#geoOp').oninput=applyFocus;
 $('#faultOn').onchange=e=>map.getLayer('faults')&&map.setLayoutProperty('faults','visibility',e.target.checked?'visible':'none');
@@ -159,6 +170,68 @@ function countOv(){$('#ovCount').textContent=$$('#ovList input').filter(c=>c.che
 $('#ovAll').onclick=()=>{$$('#ovList input').forEach(c=>{c.checked=true;c.onchange()})};
 $('#ovNone').onclick=()=>{$$('#ovList input').forEach(c=>{c.checked=false;c.onchange()})};
 $('#ovOp').oninput=()=>OVS.forEach(o=>map.setPaintProperty('ov-'+o.id,'raster-opacity',+$('#ovOp').value));
+
+/* ---------- kullanıcı dosyaları: KML / KMZ / GeoJSON / GPX ---------- */
+const USER={feats:[],files:[],imgs:[]};
+function addUserLayers(){
+  const col=k=>['coalesce',['get',k],'#d4380d'];
+  map.addLayer({id:'user-fill',type:'fill',source:'user',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':col('fill'),'fill-opacity':['coalesce',['get','fill-opacity'],0.35]}});
+  map.addLayer({id:'user-line',type:'line',source:'user',filter:['!=',['geometry-type'],'Point'],paint:{'line-color':col('stroke'),'line-width':['coalesce',['get','stroke-width'],2],'line-opacity':['coalesce',['get','stroke-opacity'],1]}});
+  map.addLayer({id:'user-pt',type:'circle',source:'user',filter:['==',['geometry-type'],'Point'],paint:{'circle-radius':6,'circle-color':['coalesce',['get','icon-color'],['get','marker-color'],'#d4380d'],'circle-stroke-color':'#fff','circle-stroke-width':2}});
+  map.addLayer({id:'user-lbl',type:'symbol',source:'user',minzoom:9,filter:['all',['==',['geometry-type'],'Point'],['has','name']],layout:{'text-field':['get','name'],'text-font':['Open Sans Semibold'],'text-size':12,'text-offset':[0,1.1],'text-anchor':'top'},paint:{'text-color':'#111','text-halo-color':'#fff','text-halo-width':1.6}});
+}
+const KCOL=c=>{if(!c)return null;c=String(c).trim();if(/^[0-9a-f]{8}$/i.test(c))return{c:'#'+c.slice(6,8)+c.slice(4,6)+c.slice(2,4),a:parseInt(c.slice(0,2),16)/255};return null};
+function cleanProps(p){const o={};for(const [k,v] of Object.entries(p||{})){if(v==null||typeof v==='object'&&!Array.isArray(v))continue;o[k]=v}
+  // KML renklerini (aabbggrr) düzelt
+  ['fill','stroke'].forEach(k=>{const r=KCOL(o[k]);if(r){o[k]=r.c;o[k+'-opacity']=r.a}});
+  if(Array.isArray(o['stroke-width']))delete o['stroke-width'];
+  return o}
+function flatten(fc,file){const out=[];const add=(g,p)=>{if(!g)return;if(g.type==='GeometryCollection')g.geometries.forEach(x=>add(x,p));
+    else if(g.type.startsWith('Multi')){const t=g.type.slice(5);g.coordinates.forEach(c=>out.push({type:'Feature',properties:p,geometry:{type:t,coordinates:c}}))}
+    else out.push({type:'Feature',properties:p,geometry:g})};
+  (fc.features||[fc]).forEach(f=>{const p=cleanProps(f.properties);p._file=file;p._u=USER.feats.length+out.length;add(f.geometry,p)});return out}
+function safeHTML(html){const d=new DOMParser().parseFromString('<div>'+html+'</div>','text/html');const OK=new Set(['B','I','STRONG','EM','BR','P','DIV','SPAN','TABLE','TBODY','THEAD','TR','TD','TH','UL','OL','LI','H1','H2','H3','H4','SMALL','HR']);
+  const walk=n=>{[...n.childNodes].forEach(c=>{if(c.nodeType===1){if(!OK.has(c.tagName)){c.replaceWith(...c.childNodes);walk(n);return}[...c.attributes].forEach(a=>c.removeAttribute(a.name));walk(c)}else if(c.nodeType!==3)c.remove()})};
+  const root=d.body.firstChild;walk(root);return root.innerHTML}
+function userPopup(e){const L=['user-pt','user-line','user-fill'].filter(l=>map.getLayer(l));const hit=map.queryRenderedFeatures(e.point,{layers:L});if(!hit.length)return false;
+  const p=hit[0].properties;const skip=new Set(['_file','_u','fill','fill-opacity','stroke','stroke-width','stroke-opacity','icon','icon-color','icon-scale','icon-opacity','label-color','label-scale','marker-color','styleUrl','styleHash','styleMapHash','description','name','visibility','timestamp']);
+  let h=`<div class="upop"><div class="eyebrow">${esc(p._file)}</div>${p.name?`<b>${esc(p.name)}</b>`:''}`;
+  if(p.description){const dsc=typeof p.description==='string'?p.description:(p.description.value||'');h+=`<div class="udesc">${safeHTML(dsc)}</div>`}
+  const rows=Object.entries(p).filter(([k])=>!skip.has(k));if(rows.length)h+='<table class="cross">'+rows.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')+'</table>';
+  const i=lookup(e.lngLat.lng,e.lngLat.lat);if(i!=null){const x=info(i);h+=`<div class="note">Altındaki birim: <span class="code">${esc(x.u.c)}</span> ${esc(x.u.n)}</div>`}
+  new maplibregl.Popup({maxWidth:'340px'}).setLngLat(e.lngLat).setHTML(h+'</div>').addTo(map);return true}
+async function readUserFile(file){const name=file.name,ext=name.split('.').pop().toLowerCase();let fc=null,imgs=[];
+  const parseXML=t=>new DOMParser().parseFromString(t,'text/xml');
+  if(ext==='kmz'){const z=await JSZip.loadAsync(file);const ks=Object.keys(z.files).filter(n=>n.toLowerCase().endsWith('.kml'));if(!ks.length)throw new Error('KMZ içinde KML bulunamadı');
+    const main=ks.find(n=>/(^|\/)doc\.kml$/i.test(n))||ks[0];const dom=parseXML(await z.file(main).async('text'));fc=toGeoJSON.kml(dom);imgs=await groundOverlays(dom,async href=>{const f=z.file(href.replace(/^\.\//,''));return f?URL.createObjectURL(await f.async('blob')):null})}
+  else if(ext==='kml'){const dom=parseXML(await file.text());fc=toGeoJSON.kml(dom);imgs=await groundOverlays(dom,async href=>/^https?:/.test(href)?href:null)}
+  else if(ext==='gpx'){fc=toGeoJSON.gpx(parseXML(await file.text()))}
+  else if(ext==='geojson'||ext==='json'){fc=JSON.parse(await file.text())}
+  else throw new Error('Desteklenmeyen dosya türü: .'+ext);
+  return{fc,imgs}}
+async function groundOverlays(dom,resolve){const out=[];const tx=(n,t)=>{const e=n.getElementsByTagName(t)[0];return e?e.textContent.trim():null};
+  for(const g of [...dom.getElementsByTagName('GroundOverlay')]){const href=tx(g,'href');if(!href)continue;let coords=null;
+    const q=g.getElementsByTagName('gx:LatLonQuad')[0]||g.getElementsByTagName('LatLonQuad')[0];
+    if(q){const c=tx(q,'coordinates').split(/\s+/).map(s=>s.split(',').map(Number));if(c.length>=4)coords=[c[3],c[2],c[1],c[0]].map(p=>[p[0],p[1]])}
+    else{const b=g.getElementsByTagName('LatLonBox')[0];if(b){const N=+tx(b,'north'),S=+tx(b,'south'),E=+tx(b,'east'),W=+tx(b,'west');coords=[[W,N],[E,N],[E,S],[W,S]]}}
+    if(!coords)continue;const url=await resolve(href);if(url)out.push({name:tx(g,'name')||href,url,coords})}
+  return out}
+async function loadUserFiles(list){for(const file of list){setHint(file.name+' okunuyor…');
+  try{const {fc,imgs}=await readUserFile(file);const feats=flatten(fc,file.name);USER.feats.push(...feats);map.getSource('user').setData({type:'FeatureCollection',features:USER.feats});
+    const ids=[];imgs.forEach((im,k)=>{const id='uimg-'+USER.imgs.length;USER.imgs.push(id);ids.push(id);map.addSource(id,{type:'image',url:im.url,coordinates:im.coords});map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':0.8,'raster-fade-duration':0}},'user-fill')});
+    USER.files.push({name:file.name,n:feats.length,imgs:ids});renderUserList();
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;const ext=c=>{if(typeof c[0]==='number'){x0=Math.min(x0,c[0]);y0=Math.min(y0,c[1]);x1=Math.max(x1,c[0]);y1=Math.max(y1,c[1])}else c.forEach(ext)};
+    feats.forEach(f=>ext(f.geometry.coordinates));imgs.forEach(i=>ext(i.coords));
+    if(x0<1e9)map.fitBounds([[x0,y0],[x1,y1]],{padding:60,maxZoom:15});
+    setHint(`${file.name}: ${feats.length} öğe${imgs.length?`, ${imgs.length} görüntü`:''} yüklendi. Araziyi görmek için 3B düğmesine basın.`)}
+  catch(err){setHint(file.name+' yüklenemedi: '+err.message)}}}
+function renderUserList(){$('#userList').innerHTML=USER.files.map((f,i)=>`<label><span>${esc(f.name)}</span><span class="muted num">${f.n} öğe${f.imgs.length?' · '+f.imgs.length+' görüntü':''}</span><button class="zoom" type="button" data-rm="${i}">kaldır</button></label>`).join('');
+  $$('#userList [data-rm]').forEach(b=>b.onclick=e=>{e.preventDefault();const f=USER.files[+b.dataset.rm];USER.feats=USER.feats.filter(x=>x.properties._file!==f.name);map.getSource('user').setData({type:'FeatureCollection',features:USER.feats});f.imgs.forEach(id=>{map.removeLayer(id);map.removeSource(id)});USER.files.splice(+b.dataset.rm,1);renderUserList()})}
+$('#ufile').onchange=e=>{loadUserFiles([...e.target.files]);e.target.value=''};
+$('#ubtn').onclick=()=>$('#ufile').click();
+['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();document.body.classList.add('drop')}));
+['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(t==='drop'||e.target===document.documentElement||!e.relatedTarget)document.body.classList.remove('drop')}));
+document.addEventListener('drop',e=>{if(e.dataTransfer&&e.dataTransfer.files.length)loadUserFiles([...e.dataTransfer.files])});
 
 /* ---------- elevation from terrarium tiles ---------- */
 const ZE=12, tileCache=new Map();

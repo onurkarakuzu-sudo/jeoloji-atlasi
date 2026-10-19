@@ -25,6 +25,8 @@
     <button data-mode="section" aria-pressed="false">Kesit</button>
     <button data-mode="measure" aria-pressed="false">Ölçüm</button>
   </div>
+  <div class="modes"><button id="b3d" aria-pressed="false" title="3B arazi görünümü">3B</button><button id="ubtn" title="KML, KMZ, GeoJSON veya GPX dosyası yükle">KML yükle</button></div>
+  <input type="file" id="ufile" accept=".kml,.kmz,.geojson,.json,.gpx" multiple hidden>
 </header>
 
 <aside class="panel" id="panel">
@@ -55,7 +57,8 @@
   <section id="t-layers" class="tab" hidden>
     <div class="eyebrow">Altlık</div>
     <div class="seg" id="basemaps">
-      <label><input type="radio" name="bm" value="topo" checked> Topoğrafya</label>
+      <label><input type="radio" name="bm" value="etopo" checked> Topoğrafya</label>
+      <label><input type="radio" name="bm" value="topo"> OpenTopoMap</label>
       <label><input type="radio" name="bm" value="sat"> Uydu</label>
       <label><input type="radio" name="bm" value="osm"> OSM</label>
       <label><input type="radio" name="bm" value="none"> Yok</label>
@@ -64,9 +67,13 @@
     <div class="row2"><label><input type="checkbox" id="t3d"> 3B arazi</label>
       <label class="rng">abartı <input type="range" id="exag" min="1" max="4" step="0.5" value="1.5"><span id="exagV" class="num">1.5×</span></label></div>
 
+    <div class="eyebrow">Kendi dosyalarınız</div>
+    <p class="note">KML, KMZ (Google Earth), GeoJSON veya GPX dosyasını “KML yükle” düğmesiyle seçin ya da haritanın üzerine sürükleyip bırakın. Dosya yalnızca tarayıcınızda açılır, hiçbir yere gönderilmez.</p>
+    <div id="userList" class="ovlist"></div>
+
     <div class="eyebrow">Vektör katmanlar</div>
     <div class="row2"><label><input type="checkbox" id="geoOn" checked> Jeoloji birimleri</label>
-      <label class="rng">şeffaflık <input type="range" id="geoOp" min="0" max="1" step="0.05" value="0.72"></label></div>
+      <label class="rng">şeffaflık <input type="range" id="geoOp" min="0" max="1" step="0.05" value="0.55"></label></div>
     <div class="row2"><label><input type="checkbox" id="faultOn" checked> Diri faylar (MTA)</label></div>
     <div class="row2"><label><input type="checkbox" id="sheetOn" checked> Pafta sınırları</label></div>
 
@@ -92,6 +99,8 @@
 <div class="hint" id="hint">Veri yükleniyor…</div>
 
 <script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/togeojson.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
