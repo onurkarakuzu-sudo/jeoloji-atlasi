@@ -4,6 +4,7 @@
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const VER='7', q=u=>u+(u.includes('?')?'&':'?')+'v='+VER;
 const TERRAIN='https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const BASEMAPS={
   etopo:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],max:19,attr:'Altlık © Esri, HERE, Garmin, OpenStreetMap'},
@@ -31,7 +32,7 @@ map.on('load',async()=>{
   map.addSource('dem-h',{type:'raster-dem',tiles:[TERRAIN],encoding:'terrarium',tileSize:256,maxzoom:14});
   map.addLayer({id:'hill',type:'hillshade',source:'dem-h',paint:{'hillshade-exaggeration':0.35,'hillshade-shadow-color':'#3b3426'}});
 
-  const [g,u,o,f]=await Promise.all([fetch('data/geology_parts.json').then(r=>r.json()).then(L=>Promise.all(L.map(u=>fetch(u).then(r=>r.json())))).then(P=>({type:'FeatureCollection',features:P.flatMap(x=>x.features)})),fetch('data/units.json').then(r=>r.json()),fetch('data/overlays.json').then(r=>r.json()),fetch('data/faults.geojson').then(r=>r.json()).catch(()=>null)]);
+  const [g,u,o,f]=await Promise.all([fetch(q('data/geology_parts.json')).then(r=>r.json()).then(L=>Promise.all(L.map(u=>fetch(q(u)).then(r=>r.json())))).then(P=>({type:'FeatureCollection',features:P.flatMap(x=>x.features)})),fetch(q('data/units.json')).then(r=>r.json()),fetch(q('data/overlays.json')).then(r=>r.json()),fetch(q('data/faults.geojson')).then(r=>r.json()).catch(()=>null)]);
   GEO=g; UNITS=u; OVS=o;
   buildIndex();
   // scanned sheet overlays (below vector)
@@ -53,15 +54,15 @@ map.on('load',async()=>{
   map.addSource('user',{type:'geojson',data:emptyFC()});
   addUserLayers();
   // formasyon kısaltmaları
-  map.addSource('glbl',{type:'geojson',data:'data/labels.geojson'});
+  map.addSource('glbl',{type:'geojson',data:q('data/labels.geojson')});
   map.addLayer({id:'geo-lbl',type:'symbol',source:'glbl',minzoom:9,layout:{'text-field':['get','k'],'text-font':['Open Sans Semibold'],'text-size':['interpolate',['linear'],['zoom'],9,10,13,13],'symbol-sort-key':['-',0,['get','a']],'text-padding':3},paint:{'text-color':'#1a1a1a','text-halo-color':'rgba(255,255,255,.9)','text-halo-width':1.4}});
   // 1:100.000 pafta indeksi
-  map.addSource('pidx',{type:'geojson',data:'data/pafta_index.geojson'});
+  map.addSource('pidx',{type:'geojson',data:q('data/pafta_index.geojson')});
   map.addLayer({id:'pidx-fill',type:'fill',source:'pidx',paint:{'fill-color':'#2f5d50','fill-opacity':['case',['==',['get','ov'],1],0.06,0]}});
   map.addLayer({id:'pidx-line',type:'line',source:'pidx',paint:{'line-color':'#1d3b8a','line-width':['case',['==',['get','ov'],1],1.6,0.8],'line-opacity':0.8}});
   map.addLayer({id:'pidx-lbl',type:'symbol',source:'pidx',layout:{'text-field':['get','id'],'text-font':['Open Sans Semibold'],'text-size':['interpolate',['linear'],['zoom'],6,10,10,15],'text-allow-overlap':false},paint:{'text-color':['case',['==',['get','ov'],1],'#b8320f','#1d3b8a'],'text-halo-color':'#fff','text-halo-width':1.6}});
   ['frames','frames-lbl'].forEach(l=>map.setLayoutProperty(l,'visibility','none'));
-  fetch('data/pafta_index.geojson').then(r=>r.json()).then(j=>{PIDX=j.features});
+  fetch(q('data/pafta_index.geojson')).then(r=>r.json()).then(j=>{PIDX=j.features});
   // drawing
   map.addSource('draw',{type:'geojson',data:emptyFC()});
   map.addLayer({id:'draw-line',type:'line',source:'draw',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':'#111','line-width':2.5}});
