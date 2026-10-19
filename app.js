@@ -89,8 +89,8 @@ function neighbours(i){const f=GEO.features[i],b=idx[i],pad=0.0005,res=new Set()
 $$('.tabs [role=tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 function showTab(id){$$('.tabs [role=tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===id));$$('.tab').forEach(t=>t.hidden=t.id!==id);$('#panel').classList.remove('min')}
 $('#collapse').onclick=()=>$('#panel').classList.toggle('min');
-$$('.modes button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
-function setMode(m){mode=m;$$('.modes button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===m));A=null;measurePts=[];
+$$('.modes button[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+function setMode(m){mode=m;$$('.modes button[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===m));A=null;measurePts=[];
   if(m!=='section'||!lastSec)setDraw([]);setHint();if(m==='section')showTab('t-section');if(m==='info')showTab('t-info');map.getCanvas().style.cursor=m==='info'?'':'crosshair'}
 function setHint(t){$('#hint').textContent=t||({info:'Bilgi: haritada bir noktaya tıklayın.',section:"Kesit: başlangıç noktası A için tıklayın.",measure:'Ölçüm: noktalara tıklayın; bitirmek için çift tıklayın.'})[mode]}
 function setDraw(features){const s=map.getSource('draw');if(s)s.setData({type:'FeatureCollection',features})}
