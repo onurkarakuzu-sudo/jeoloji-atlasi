@@ -169,9 +169,9 @@ async function ensureGoogle(v){if(map.getLayer('bm-'+v))return true;const key=($
     map.addSource('bm-'+v,{type:'raster',tiles:[`https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${j.session}&key=${encodeURIComponent(key)}`],tileSize:j.tileWidth||256,maxzoom:22,attribution:'Harita verileri ©'+new Date().getFullYear()+' Google'});
     map.addLayer({id:'bm-'+v,type:'raster',source:'bm-'+v,layout:{visibility:'none'}},'bm-etopo');BASEMAPS[v]={google:1};return true}
   catch(err){setHint('Google altlığı açılamadı: '+err.message);return false}}
-async function setBasemap(v){if(GTYPES[v]&&!(await ensureGoogle(v))){const r=$(`#basemaps input[value="${BM}"]`);if(r)r.checked=true;return}
-  BM=v;Object.keys(BASEMAPS).forEach(k=>map.getLayer('bm-'+k)&&map.setLayoutProperty('bm-'+k,'visibility',v===k?'visible':'none'));const r=$(`#basemaps input[value="${v}"]`);if(r)r.checked=true}
-$$('#basemaps input').forEach(r=>r.onchange=()=>setBasemap(r.value));
+async function setBasemap(v){if(GTYPES[v]&&!(await ensureGoogle(v))){const r=$(`input[name=bm][value="${BM}"]`);if(r)r.checked=true;return}
+  BM=v;Object.keys(BASEMAPS).forEach(k=>map.getLayer('bm-'+k)&&map.setLayoutProperty('bm-'+k,'visibility',v===k?'visible':'none'));const r=$(`input[name=bm][value="${v}"]`);if(r)r.checked=true}
+$$('input[name=bm]').forEach(r=>r.onchange=()=>setBasemap(r.value));
 $('#gkey').value=lsGet('gkey')||'';
 $('#gsave').onclick=()=>{const k=$('#gkey').value.trim();lsSet('gkey',k);Object.keys(GTYPES).forEach(v=>{if(map.getLayer('bm-'+v)){map.removeLayer('bm-'+v);map.removeSource('bm-'+v);delete BASEMAPS[v]}});
   $('#gstat').textContent=k?'Anahtar bu tarayıcıda kaydedildi. Bir Google altlığı seçin.':'Anahtar silindi.';if(GTYPES[BM])setBasemap('etopo')};
