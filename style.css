@@ -137,3 +137,5 @@ body.pvopen>*:not(#pv){visibility:hidden}
   .pv-page{box-shadow:none;margin:0}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+#pv[hidden]{display:none!important}
