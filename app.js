@@ -276,6 +276,83 @@ $('#lblOn').onchange=e=>map.setLayoutProperty('geo-lbl','visibility',e.target.ch
 $('#opQuick').oninput=e=>{$('#geoOp').value=e.target.value;applyFocus();$('#opV').textContent=Math.round(e.target.value*100)+'%'};
 $('#geoOp').addEventListener('input',()=>{$('#opQuick').value=$('#geoOp').value;$('#opV').textContent=Math.round($('#geoOp').value*100)+'%'});
 
+/* ---------- A4 çıktı şablonu ---------- */
+const PV={orient:'L',data:null};
+const LAY={L:{W:281,H:194,map:{x:0,y:13,w:196,h:181},side:{x:200,y:13,w:81,h:181}},P:{W:194,H:281,map:{x:0,y:13,w:194,h:178},side:{x:0,y:194,w:194,h:87}}};
+const FM=8; // çerçeve kenar boşluğu (mm) — koordinat etiketleri için
+const PXMM=6; // yakalama çözünürlüğü (CSS px / mm) × pixelRatio 2 ≈ 300 dpi
+function dms(v,lat){const a=Math.abs(v),d=Math.floor(a+1e-9),m=Math.round((a-d)*60);const dd=m===60?d+1:d,mm=m===60?0:m;return `${dd}°${String(mm).padStart(2,'0')}′${lat?(v>=0?'K':'G'):(v>=0?'D':'B')}`}
+function tickStep(span){const c=[1,2,5,10,15,20,30,60,120,300];for(const m of c){if(span*60/m<=6)return m/60}return 10}
+async function capture(orient){
+  const L=LAY[orient],iw=L.map.w-2*FM,ih=L.map.h-2*FM,wpx=Math.round(iw*PXMM),hpx=Math.round(ih*PXMM);
+  const el=$('#map'),b=map.getBounds(),c0=map.getCenter(),z0=map.getZoom(),st={pitch:map.getPitch(),bearing:map.getBearing(),terr:$('#t3d').checked};
+  if(st.terr)map.setTerrain(null);
+  const pr=map.getPixelRatio?map.getPixelRatio():devicePixelRatio;
+  el.style.cssText=`position:fixed;left:0;top:0;width:${wpx}px;height:${hpx}px;z-index:-1`;
+  if(map.setPixelRatio)map.setPixelRatio(2);
+  map.resize();map.jumpTo({pitch:0,bearing:0});map.fitBounds(b,{padding:0,duration:0});
+  await new Promise(r=>{let done=false;const f=()=>{if(!done){done=true;r()}};map.once('idle',f);setTimeout(f,15000)});
+  const img=await new Promise(r=>{map.once('render',()=>r(map.getCanvas().toDataURL('image/jpeg',0.92)));map.triggerRepaint()});
+  // çerçeve için konumlar (oran olarak)
+  const nw=map.unproject([0,0]),se=map.unproject([wpx,hpx]),W=nw.lng,E=se.lng,N=nw.lat,S=se.lat;
+  const ticks={x:[],y:[]};const sx=tickStep(E-W),sy=tickStep(N-S);
+  for(let v=Math.ceil(W/sx)*sx;v<=E+1e-9;v+=sx)ticks.x.push({f:map.project([v,(N+S)/2]).x/wpx,t:dms(v,false)});
+  for(let v=Math.ceil(S/sy)*sy;v<=N+1e-9;v+=sy)ticks.y.push({f:map.project([(W+E)/2,v]).y/hpx,t:dms(v,true)});
+  const ground=hav([W,(N+S)/2],[E,(N+S)/2])*1000; // m
+  // görünen alandaki birimler
+  const seen=new Map();
+  map.queryRenderedFeatures({layers:['geo-fill']}).forEach(f=>{const s=f.properties.s,u=f.properties.u;if(hiddenSheets.has(s))return;const k=s+':'+u;if(!seen.has(k))seen.set(k,{s,u})});
+  const faults=map.getLayer('faults')&&map.getLayoutProperty('faults','visibility')!=='none'&&map.queryRenderedFeatures({layers:['faults']}).length>0;
+  const user=USER.files.map(f=>f.name);
+  // geri yükle
+  el.style.cssText='';if(map.setPixelRatio)map.setPixelRatio(pr);map.resize();map.jumpTo({center:c0,zoom:z0});
+  if(st.terr)setTerrain();map.jumpTo({pitch:st.pitch,bearing:st.bearing});
+  return {img,iw,ih,W,E,N,S,ticks,ground,units:[...seen.values()],faults,user}}
+function legendHTML(d,compact){const by=new Map();d.units.forEach(({s,u})=>{if(!by.has(s))by.set(s,[]);by.get(s).push(u)});
+  let h='';const multi=by.size>1;
+  [...by.keys()].sort((a,b)=>a-b).forEach(s=>{const sh=UNITS[s];const list=by.get(s).map(u=>sh.units[u]).filter(x=>x&&x.c!=='Göl').sort((a,b)=>a.o-b.o);
+    if(!list.length)return;if(multi)h+=`<div class="pl-sh">${esc(sh.title)}</div>`;
+    h+=list.map(x=>`<div class="pl-r"><span class="pl-sw" style="background:${x.col}">${esc(x.c)}</span><span class="pl-t"><b>${esc(x.n)}</b> <i>${esc(x.a)}</i>${compact?'':'<br>'+esc(x.l)}</span></div>`).join('')});
+  if(d.faults||d.user.length){h+='<div class="pl-sh">Simgeler</div>';
+    if(d.faults)h+='<div class="pl-r"><span class="pl-ln"></span><span class="pl-t">Diri fay (MTA)</span></div>';
+    d.user.forEach(n=>{h+=`<div class="pl-r"><span class="pl-ln u"></span><span class="pl-t">${esc(n)}</span></div>`})}
+  return h||'<div class="pl-t">Görünen alanda vektör birim yok.</div>'}
+function niceKm(x){const p=10**Math.floor(Math.log10(x)),m=x/p;return (m<1.5?1:m<3.5?2:m<7.5?5:10)*p}
+function scaleHTML(d,wmm){const sc=d.ground*1000/d.iw;const sr=Math.round(sc/500)*500;const km=niceKm(sc*wmm/1e6);const bmm=km*1e6/sc;
+  const seg=4,sw=bmm/seg;let r='';for(let i=0;i<seg;i++)r+=`<rect x="${(i*sw).toFixed(2)}" y="0" width="${sw.toFixed(2)}" height="2" fill="${i%2?'#fff':'#111'}" stroke="#111" stroke-width=".2"/>`;
+  const lab=v=>v>=1?(+v.toFixed(2))+' km':Math.round(v*1000)+' m';
+  return `<div class="pl-scale"><div>Ölçek ≈ 1:${sr.toLocaleString('tr-TR')} <span class="muted">(A4 çıktıda)</span></div><svg width="${bmm+8}mm" height="7mm" viewBox="-2 -3 ${bmm+8} 7">${r}<text x="0" y="-0.6" font-size="2.4">0</text><text x="${bmm}" y="-0.6" font-size="2.4" text-anchor="middle">${lab(km)}</text><text x="${bmm/2}" y="-0.6" font-size="2.4" text-anchor="middle">${lab(km/2)}</text></svg></div>`}
+const NORTH='<svg class="pl-north" viewBox="0 0 20 30" width="12mm" height="18mm"><polygon points="10,2 16,24 10,19 4,24" fill="#111"/><polygon points="10,2 10,19 4,24" fill="#fff" stroke="#111" stroke-width=".6"/><text x="10" y="30" font-size="6" text-anchor="middle" font-weight="700">K</text></svg>';
+function renderSheet(){const d=PV.data,o=PV.orient,L=LAY[o];if(!d)return;
+  const T=esc($('#pvTitle').value||'Jeoloji Haritası');
+  const fx=L.map.x+FM,fy=L.map.y+FM;
+  let ticks='';d.ticks.x.forEach(t=>{const x=(t.f*d.iw).toFixed(2);ticks+=`<line x1="${x}" y1="0" x2="${x}" y2="-1.6"/><line x1="${x}" y1="${d.ih}" x2="${x}" y2="${d.ih+1.6}"/><line x1="${x}" y1="0" x2="${x}" y2="${d.ih}" class="g"/><text x="${x}" y="-2.4" text-anchor="middle">${t.t}</text><text x="${x}" y="${d.ih+4.6}" text-anchor="middle">${t.t}</text>`});
+  d.ticks.y.forEach(t=>{const y=(t.f*d.ih).toFixed(2);ticks+=`<line x1="0" y1="${y}" x2="-1.6" y2="${y}"/><line x1="${d.iw}" y1="${y}" x2="${d.iw+1.6}" y2="${y}"/><line x1="0" y1="${y}" x2="${d.iw}" y2="${y}" class="g"/><text transform="translate(-2.4 ${y}) rotate(-90)" text-anchor="middle">${t.t}</text><text transform="translate(${d.iw+2.4} ${y}) rotate(90)" text-anchor="middle">${t.t}</text>`});
+  const frame=`<svg class="pl-frame" style="left:${fx-FM}mm;top:${fy-FM}mm;width:${d.iw+2*FM}mm;height:${d.ih+2*FM}mm" viewBox="${-FM} ${-FM} ${d.iw+2*FM} ${d.ih+2*FM}"><rect x="0" y="0" width="${d.iw}" height="${d.ih}" class="o"/><rect x="-1.6" y="-1.6" width="${d.iw+3.2}" height="${d.ih+3.2}" class="o2"/>${ticks}</svg>`;
+  const sheets=[...new Set(d.units.map(x=>UNITS[x.s].title))].join(', ')||'—';
+  const info=`<div class="pl-info">Koordinat sistemi: WGS84 coğrafi (enlem/boylam)<br>Kaynak: ${esc(sheets)} — MTA 1:100.000 ölçekli jeoloji haritalarından sayısallaştırılmıştır.<br>Altlık: ${esc(({etopo:'Esri Topoğrafya',topo:'OpenTopoMap',sat:'Esri Uydu',osm:'OpenStreetMap',none:'—',groad:'Google Harita',gsat:'Google Uydu',ghyb:'Google Uydu',gter:'Google Arazi'})[BM]||BM)}${BASEMAPS[BM]&&BASEMAPS[BM].attr?' ('+esc(BASEMAPS[BM].attr)+')':''}<br>Tarih: ${new Date().toLocaleDateString('tr-TR')}</div>`;
+  const side=o==='L'?`<div class="pl-side" style="left:${L.side.x}mm;top:${L.side.y}mm;width:${L.side.w}mm;height:${L.side.h}mm"><div class="pl-top">${NORTH}${scaleHTML(d,40)}</div><div class="pl-hd">Stratigrafik lejant <span>(genç → yaşlı, yalnız görünen alan)</span></div><div class="pl-leg">${legendHTML(d)}</div>${info}</div>`
+   :`<div class="pl-side P" style="left:${L.side.x}mm;top:${L.side.y}mm;width:${L.side.w}mm;height:${L.side.h}mm"><div class="pl-hd">Stratigrafik lejant <span>(genç → yaşlı, yalnız görünen alan)</span></div><div class="pl-leg cols">${legendHTML(d)}</div><div class="pl-bot">${NORTH}${scaleHTML(d,40)}${info}</div></div>`;
+  $('#pvPage').className='pv-page '+o;
+  $('#pvPage').innerHTML=`<div class="pl-title" style="width:${L.W}mm"><span>${T}</span><span class="pl-sub">${$('#pvSub').value?esc($('#pvSub').value):''}</span></div>
+   <img class="pl-map" src="${d.img}" style="left:${fx}mm;top:${fy}mm;width:${d.iw}mm;height:${d.ih}mm" alt="Harita">${frame}${side}`;
+  $('#pvStyle').textContent=`@page{size:A4 ${o==='L'?'landscape':'portrait'};margin:8mm}`;
+  fitLegend()}
+function fitLegend(){const leg=$('#pvPage .pl-leg');if(!leg)return;const P=PV.orient==='P';
+  const over=()=>leg.scrollHeight>leg.clientHeight+1||leg.scrollWidth>leg.clientWidth+1;
+  const modes=P?[[false,2],[true,2],[true,3],[true,4]]:[[false,1],[true,1],[true,2],[true,3]];let ok=false;
+  for(const [cmp,cols] of modes){leg.innerHTML=legendHTML(PV.data,cmp);leg.style.columnCount=cols;leg.style.columnGap='4mm';leg.style.columnFill='auto';
+    for(let fs=8.5;fs>=4.6;fs-=0.3){leg.style.fontSize=fs+'pt';if(!over()){ok=true;break}}if(ok)break}
+  $('#pvWarn').textContent=ok?'':'Uyarı: görünen alanda çok sayıda birim var, lejant sığmadı. Haritayı biraz yakınlaştırıp yeniden “A4 Çıktı”ya basın.'}
+async function openPrint(){setHint('Çıktı hazırlanıyor… (karolar yükleniyor)');$('#bprint').disabled=true;
+  try{PV.data=await capture(PV.orient);$('#pv').hidden=false;document.body.classList.add('pvopen');renderSheet();setHint('Çıktı hazır: “Yazdır / PDF” ile A4 olarak yazdırın ya da PDF kaydedin.')}
+  catch(e){setHint('Çıktı hazırlanamadı: '+e.message)}finally{$('#bprint').disabled=false}}
+$('#bprint').onclick=openPrint;
+$('#pvClose').onclick=()=>{$('#pv').hidden=true;document.body.classList.remove('pvopen')};
+$('#pvPrint').onclick=()=>window.print();
+$$('#pv [name=pvo]').forEach(r=>r.onchange=async()=>{PV.orient=r.value;$('#pv').hidden=true;document.body.classList.remove('pvopen');await openPrint()});
+['#pvTitle','#pvSub'].forEach(s=>$(s).oninput=renderSheet);
+
 /* ---------- elevation from terrarium tiles ---------- */
 const ZE=12, tileCache=new Map();
 function tileXY(lon,lat,z){const n=2**z,x=(lon+180)/360*n,r=lat*Math.PI/180,y=(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n;return[x,y]}

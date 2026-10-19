@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 <div id="map" role="application" aria-label="Jeoloji haritası"></div>
@@ -25,7 +25,7 @@
     <button data-mode="section" aria-pressed="false">Kesit</button>
     <button data-mode="measure" aria-pressed="false">Ölçüm</button>
   </div>
-  <div class="modes"><button id="b3d" aria-pressed="false" title="3B arazi görünümü">3B</button><button id="ubtn" title="KML, KMZ, GeoJSON veya GPX dosyası yükle">KML yükle</button></div>
+  <div class="modes"><button id="b3d" aria-pressed="false" title="3B arazi görünümü">3B</button><button id="ubtn" title="KML, KMZ, GeoJSON veya GPX dosyası yükle">KML yükle</button><button id="bprint" title="Görünen alanın A4 çıktısı: koordinat çerçevesi, lejant, kuzey oku, ölçek">A4 Çıktı</button></div>
   <label class="opq" title="Vektör jeoloji haritasının opaklığı; sola çekince altlık görünür">Vektör <input type="range" id="opQuick" min="0" max="1" step="0.05" value="0.55" aria-label="Vektör harita opaklığı"> <span id="opV" class="num">55%</span></label>
   <input type="file" id="ufile" accept=".kml,.kmz,.geojson,.json,.gpx" multiple hidden>
 </header>
@@ -111,11 +111,22 @@
   </section>
 </aside>
 
+<div id="pv" hidden>
+  <div class="pv-tools">
+    <b>A4 çıktı</b>
+    <label><input type="radio" name="pvo" value="L" checked> Yatay</label><label><input type="radio" name="pvo" value="P"> Dikey</label>
+    <input id="pvTitle" value="Jeoloji Haritası" aria-label="Başlık"><input id="pvSub" placeholder="Alt başlık / proje adı (isteğe bağlı)" aria-label="Alt başlık">
+    <button class="btn" id="pvPrint">Yazdır / PDF</button><button class="btn" id="pvClose">Kapat</button><span id="pvWarn" class="status warn"></span>
+    <span class="note">Yazdırırken “Arka plan grafikleri” açık, kenar boşluğu “Varsayılan” olmalı. Haritayı değiştirmek için kapatıp görünümü ayarlayın ve yeniden “A4 Çıktı”ya basın.</span>
+  </div>
+  <div class="pv-wrap"><div id="pvPage" class="pv-page"></div></div>
+  <style id="pvStyle"></style>
+</div>
 <div class="hint" id="hint">Veri yükleniyor…</div>
 
 <script src="vendor/maplibre-gl.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/togeojson.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
