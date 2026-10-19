@@ -4,7 +4,7 @@
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const VER='7', q=u=>u+(u.includes('?')?'&':'?')+'v='+VER;
+const VER='13', q=u=>u+(u.includes('?')?'&':'?')+'v='+VER;
 const TERRAIN='https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const BASEMAPS={
   etopo:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],max:19,attr:'Altlık © Esri, HERE, Garmin, OpenStreetMap'},
@@ -12,6 +12,7 @@ const BASEMAPS={
   sat:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],max:19,attr:'Görüntü © Esri, Maxar, Earthstar Geographics'},
   osm:{tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],max:19,attr:'© OpenStreetMap katkıcıları'}
 };
+let FAULTS=[];
 let BM='etopo', bmErr={}, PIDX=[], hiddenSheets=new Set();
 let GEO=null, UNITS=null, OVS=[], idx=[], grid=new Map(); const CELL=0.05;
 let mode='info', selected=null, legendFocus=null, searchSet=null;
@@ -33,7 +34,7 @@ map.on('load',async()=>{
   map.addLayer({id:'hill',type:'hillshade',source:'dem-h',paint:{'hillshade-exaggeration':0.35,'hillshade-shadow-color':'#3b3426'}});
 
   const [g,u,o,f]=await Promise.all([fetch(q('data/geology_parts.json')).then(r=>r.json()).then(L=>Promise.all(L.map(u=>fetch(q(u)).then(r=>r.json())))).then(P=>({type:'FeatureCollection',features:P.flatMap(x=>x.features)})),fetch(q('data/units.json')).then(r=>r.json()),fetch(q('data/overlays.json')).then(r=>r.json()),fetch(q('data/faults.geojson')).then(r=>r.json()).catch(()=>null)]);
-  GEO=g; UNITS=u; OVS=o;
+  GEO=g; UNITS=u; OVS=o; FAULTS=f?f.features:[];
   buildIndex();
   // scanned sheet overlays (below vector)
   OVS.forEach(ov=>{const [W,S,E,N]=ov.bbox;
@@ -43,6 +44,10 @@ map.on('load',async()=>{
   map.addLayer({id:'geo-fill',type:'fill',source:'geo',paint:{'fill-color':['get','c'],'fill-opacity':0.55}});
   map.addLayer({id:'geo-line',type:'line',source:'geo',paint:{'line-color':'#2b2b2b','line-width':['interpolate',['linear'],['zoom'],7,0.1,12,0.8],'line-opacity':0.6}});
   map.addLayer({id:'geo-sel',type:'line',source:'geo',filter:['==',['get','_i'],-1],paint:{'line-color':'#b8320f','line-width':3}});
+  map.addSource('ref-roads',{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19,attribution:'Yol ve yerleşim © Esri, HERE, Garmin, OpenStreetMap'});
+  map.addSource('ref-places',{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19});
+  map.addLayer({id:'ref-roads',type:'raster',source:'ref-roads',paint:{'raster-opacity':0.9,'raster-fade-duration':0}});
+  map.addLayer({id:'ref-places',type:'raster',source:'ref-places',paint:{'raster-opacity':0.9,'raster-fade-duration':0}});
   if(f){map.addSource('faults',{type:'geojson',data:f});
     map.addLayer({id:'faults',type:'line',source:'faults',paint:{'line-color':'#c4161c','line-width':['interpolate',['linear'],['zoom'],7,0.8,12,2.2]}});}
   // sheet frames + labels
@@ -271,6 +276,9 @@ function sheetBox(c){const id=sheetAt(c[0],c[1]),box=$('#sheetBox');if(!id){box.
   box.innerHTML=h+'</div>';box.hidden=false;
   const b1=box.querySelector('[data-sov]');if(b1)b1.onclick=()=>{const cb=$(`#ovList input[data-ov="${id}"]`);cb.checked=!cb.checked;cb.onchange();sheetBox(c)};
   const b2=box.querySelector('[data-svec]');if(b2)b2.onclick=()=>{hiddenSheets.has(si)?hiddenSheets.delete(si):hiddenSheets.add(si);vecFilter();sheetBox(c)}}
+$('#refOn').onchange=e=>['ref-roads','ref-places'].forEach(l=>map.setLayoutProperty(l,'visibility',e.target.checked?'visible':'none'));
+$('#refOp').oninput=e=>{['ref-roads','ref-places'].forEach(l=>map.setPaintProperty(l,'raster-opacity',+e.target.value));$('#refOpQ').value=e.target.value};
+$('#refOpQ').oninput=e=>{$('#refOp').value=e.target.value;$('#refOp').oninput({target:$('#refOp')})};
 $('#pidxOn').onchange=e=>['pidx-fill','pidx-line','pidx-lbl'].forEach(l=>map.setLayoutProperty(l,'visibility',e.target.checked?'visible':'none'));
 $('#lblOn').onchange=e=>map.setLayoutProperty('geo-lbl','visibility',e.target.checked?'visible':'none');
 $('#opQuick').oninput=e=>{$('#geoOp').value=e.target.value;applyFocus();$('#opV').textContent=Math.round(e.target.value*100)+'%'};
@@ -303,7 +311,7 @@ async function capture(orient){
   // görünen alandaki birimler
   const seen=new Map();
   map.queryRenderedFeatures({layers:['geo-fill']}).forEach(f=>{const s=f.properties.s,u=f.properties.u;if(hiddenSheets.has(s))return;const k=s+':'+u;if(!seen.has(k))seen.set(k,{s,u})});
-  const faults=map.getLayer('faults')&&map.getLayoutProperty('faults','visibility')!=='none'&&map.queryRenderedFeatures({layers:['faults']}).length>0;
+  const faults=(lastSec&&lastSec.faults&&lastSec.faults.length&&PV.sec)||map.getLayer('faults')&&map.getLayoutProperty('faults','visibility')!=='none'&&map.queryRenderedFeatures({layers:['faults']}).length>0;
   const user=USER.files.map(f=>{const g=new Set(USER.feats.filter(x=>x.properties._file===f.name).map(x=>x.geometry.type));const ft=USER.feats.find(x=>x.properties._file===f.name);
     return {name:f.name,type:g.has('Polygon')?'poly':g.has('LineString')?'line':'point',col:(ft&&(ft.properties.stroke||ft.properties.fill||ft.properties['marker-color']))||'#d4380d'}});
   // geri yükle
@@ -368,11 +376,12 @@ function printSection(wmm,hmm){const {D,units,z,flat}=lastSec,N=z.length;const m
     g+=`<polygon points="${t.concat(b).map(p=>p[0].toFixed(2)+','+p[1].toFixed(2)).join(' ')}" fill="${sg.u?sg.u.u.col:'#ddd'}" stroke="#333" stroke-width=".1"/>`;
     if(sg.u&&x1-x0>5){const km=Math.round((sg.k0+sg.k1)/2);g+=`<text x="${((x0+x1)/2).toFixed(2)}" y="${(ymm(z[km])-1.2).toFixed(2)}" font-size="2.2" text-anchor="middle" font-family="IBM Plex Mono, monospace">${esc(sg.u.u.c)}</text>`}}
   g+=`<polyline points="${z.map((m,k)=>xmm(k).toFixed(2)+','+ymm(m).toFixed(2)).join(' ')}" fill="none" stroke="#111" stroke-width=".3"/>`;
+  (lastSec.faults||[]).forEach(fl=>{const kf=fl.t*(N-1),zf=z[Math.round(kf)],x=xmm(kf);g+=`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${(ymm(zf)-3).toFixed(2)}" y2="${(ymm(zf)+band+1).toFixed(2)}" stroke="#c4161c" stroke-width=".45"/><text x="${(x+.6).toFixed(2)}" y="${(ymm(zf)-3.3).toFixed(2)}" font-size="2.4" fill="#c4161c" font-weight="700">F</text>`});
   g+=`<line x1="${ml}" x2="${ml}" y1="${ymm(hi)}" y2="${ymm(lo)+band}" stroke="#111" stroke-width=".2"/><line x1="${ml}" x2="${ml+Lp}" y1="${ymm(lo)+band}" y2="${ymm(lo)+band}" stroke="#111" stroke-width=".2"/>`;
   g+=`<text x="${ml}" y="${mt-2}" font-size="3.2" font-weight="700">A</text><text x="${ml+Lp}" y="${mt-2}" font-size="3.2" font-weight="700" text-anchor="end">A′</text>`;
   g+=`<text x="${ml+Lp/2}" y="${mt-2}" font-size="2.8" font-weight="600" text-anchor="middle">Topoğrafik–jeolojik kesit A–A′ (${D.toFixed(2)} km)</text>`;
   g+=`<text x="2" y="${(ymm(hi)+ymm(lo))/2}" font-size="2.3" transform="rotate(-90 2 ${(ymm(hi)+ymm(lo))/2})" text-anchor="middle">Kot (m)</text>`;
-  const fx=ml,fy=hmm-1.3;g+=`<text x="${fx}" y="${fy}" font-size="2.3">Mesafe (km) · Yatay ölçek 1:${Math.round(X).toLocaleString('tr-TR')} · Düşey ölçek 1:${Math.round(Y).toLocaleString('tr-TR')} (düşey abartı ${String(vex).replace('.',',')}×) · Renkli şerit yüzeydeki birimi gösterir, yüzey altı yorumlanmamıştır${flat?' · yükseklik verisi alınamadı':''}</text>`;
+  const fx=ml,fy=hmm-1.3;g+=`<text x="${fx}" y="${fy}" font-size="2.3">Mesafe (km) · Yatay ölçek 1:${Math.round(X).toLocaleString('tr-TR')} · Düşey ölçek 1:${Math.round(Y).toLocaleString('tr-TR')} (düşey abartı ${String(vex).replace('.',',')}×)${(lastSec.faults||[]).length?' · F: diri fay':''} · Renkli şerit yüzeydeki birimi gösterir, yüzey altı yorumlanmamıştır${flat?' · yükseklik verisi alınamadı':''}</text>`;
   return g+'</svg>'}
 /* sürüklenebilir yazı / sembol notları */
 function renderNotes(){const box=$('#pvNotes');if(!box)return;box.innerHTML=PV.notes.map((n,i)=>`<div class="pl-note" data-i="${i}" style="left:${n.x}mm;top:${n.y}mm"><span class="pl-handle" title="Sürükleyerek taşıyın">⠿</span>${n.sym==='poly'?'<span class="pl-sym poly"></span>':n.sym==='pt'?'<span class="pl-sym pt"></span>':n.sym==='arrow'?'<span class="pl-arrow">➜</span>':''}<span class="pl-ntext" contenteditable="true" spellcheck="false">${esc(n.t)}</span><button class="pl-x" title="Sil">×</button></div>`).join('');
@@ -402,6 +411,13 @@ async function elevAt(lon,lat){const [fx,fy]=tileXY(lon,lat,ZE);const tx=Math.fl
   const px=Math.min(255,Math.floor((fx-tx)*256)),py=Math.min(255,Math.floor((fy-ty)*256)),o=(py*256+px)*4;return d[o]*256+d[o+1]+d[o+2]/256-32768}
 
 /* ---------- cross-section ---------- */
+function segX(p1,p2,p3,p4){const d=(p2[0]-p1[0])*(p4[1]-p3[1])-(p2[1]-p1[1])*(p4[0]-p3[0]);if(Math.abs(d)<1e-15)return null;
+  const t=((p3[0]-p1[0])*(p4[1]-p3[1])-(p3[1]-p1[1])*(p4[0]-p3[0]))/d,u=((p3[0]-p1[0])*(p2[1]-p1[1])-(p3[1]-p1[1])*(p2[0]-p1[0]))/d;return(t>=0&&t<=1&&u>=0&&u<=1)?t:null}
+function sectionFaults(a,b){const out=[];const x0=Math.min(a[0],b[0]),x1=Math.max(a[0],b[0]),y0=Math.min(a[1],b[1]),y1=Math.max(a[1],b[1]);
+  for(const f of FAULTS){const L=f.geometry.type==='LineString'?[f.geometry.coordinates]:f.geometry.coordinates;
+    for(const c of L)for(let i=1;i<c.length;i++){const p=c[i-1],q=c[i];if(Math.max(p[0],q[0])<x0||Math.min(p[0],q[0])>x1||Math.max(p[1],q[1])<y0||Math.min(p[1],q[1])>y1)continue;
+      const t=segX(a,b,p,q);if(t!=null){const ang=Math.atan2(q[1]-p[1],(q[0]-p[0])*Math.cos(a[1]*Math.PI/180))*180/Math.PI;let az=(90-ang+360)%180;out.push({t,name:f.properties.n||'',az:Math.round(az)})}}}
+  return out.sort((x,y)=>x.t-y.t)}
 async function runSection(a,b){
   const D=hav(a,b),N=Math.max(100,Math.min(400,Math.round(D*25)));const pts=[];for(let k=0;k<N;k++){const t=k/(N-1);pts.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}
   showTab('t-section');$('#secStatus').className='status';$('#secStatus').textContent='Yükseklikler okunuyor…';
@@ -411,7 +427,8 @@ async function runSection(a,b){
   if(z.some(v=>v==null)){if(z.every(v=>v==null)){flat=true;z=z.map(()=>0);$('#secStatus').className='status warn';$('#secStatus').textContent='Yükseklik karoları alınamadı (ağ bağlantısı?). Kesit düz yüzey olarak çizildi; yalnızca birim dizilimi gerçektir.'}
     else{let last=z.find(v=>v!=null);z=z.map(v=>v==null?last:(last=v))}}
   if(!flat)$('#secStatus').textContent=`Kot aralığı ${Math.round(Math.min(...z))}–${Math.round(Math.max(...z))} m · yükseklik: AWS Terrain Tiles z${ZE}.`;
-  lastSec={a,b,D,pts,units,z,flat,done:true};drawSection();setHint("Kesit hazır. Grafiğin üzerinde gezinince haritada konum görünür. Yeni kesit için A noktasına tıklayın.");
+  const faults=sectionFaults(a,b);
+  lastSec={a,b,D,pts,units,z,flat,faults,done:true};drawSection();setHint("Kesit hazır. Grafiğin üzerinde gezinince haritada konum görünür. Yeni kesit için A noktasına tıklayın.");
 }
 function drawSection(){if(!lastSec)return;const {D,units,z,flat,pts}=lastSec,N=z.length,vex=+$('#vex').value;
   const zmin=Math.min(...z),zmax=Math.max(...z),pl=52,pr=14,pt=30,pb=38,W=Math.max(560,Math.min(1600,Math.round(D*80)));const strip=Math.max(80,Math.min(300,(zmax-zmin)*0.25||150));
@@ -431,6 +448,7 @@ function drawSection(){if(!lastSec)return;const {D,units,z,flat,pts}=lastSec,N=z
     s+=`<polygon points="${top.concat(bot).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="${g.u?g.u.u.col:'#d4d0c6'}" stroke="#333" stroke-width="0.35"/>`;
     if(g.u&&(xe-xs)>24){const km=Math.round((g.k0+g.k1)/2);s+=`<text x="${((xs+xe)/2).toFixed(1)}" y="${(Y(z[km])-6).toFixed(1)}" text-anchor="middle" font-family="IBM Plex Mono, monospace" fill="${ink}">${esc(g.u.u.c)}</text>`}}
   s+=`<polyline points="${z.map((m,k)=>X(k).toFixed(1)+','+Y(m).toFixed(1)).join(' ')}" fill="none" stroke="${ink}" stroke-width="1.4"/>`;
+  (lastSec.faults||[]).forEach(fl=>{const kf=fl.t*(N-1),zf=z[Math.round(kf)],x=X(kf);s+=`<line x1="${x}" x2="${x}" y1="${Y(zf)-14}" y2="${Y(zf-strip)+6}" stroke="#c4161c" stroke-width="2"/><text x="${x+3}" y="${Y(zf)-16}" fill="#c4161c" font-size="10">F</text>`});
   s+=`<text x="${pl}" y="${pt-10}" font-weight="600" fill="${ink}">A</text><text x="${W-pr}" y="${pt-10}" text-anchor="end" font-weight="600" fill="${ink}">A'</text>`;
   s+=`<text x="${(pl+W-pr)/2}" y="${pt-10}" text-anchor="middle" fill="${mute}">Renkli şerit: yüzeydeki birim (${Math.round(strip)} m kalınlıkta gösterim) · yüzey altı yorumlanmamıştır</text>`;
   s+=`<line id="cur" x1="0" x2="0" y1="${pt}" y2="${pt+H}" stroke="#b8320f" stroke-width="1" visibility="hidden"/></svg>`;
@@ -440,7 +458,8 @@ function drawSection(){if(!lastSec)return;const {D,units,z,flat,pts}=lastSec,N=z
     cl.setAttribute('x1',X(k));cl.setAttribute('x2',X(k));cl.setAttribute('visibility','visible');map.getSource('cursor').setData({type:'FeatureCollection',features:[pt(pts[k])]});
     const u=units[k];setHint(`${(k/(N-1)*D).toFixed(2)} km · ${flat?'':Math.round(z[k])+' m · '}${u?u.u.c+' – '+u.u.n:'vektör pafta dışı'}`)};
   svg.onmouseleave=()=>{cl.setAttribute('visibility','hidden');map.getSource('cursor').setData(emptyFC())};
-  $('#secTable tbody').innerHTML=segs.filter(g=>g.u).map(g=>`<tr><td class="num">${(g.k0/(N-1)*D).toFixed(2)}–${(g.k1/(N-1)*D).toFixed(2)}</td><td><span class="code">${esc(g.u.u.c)}</span> ${esc(g.u.u.n)}<div class="muted" style="font-size:11px">${esc(g.u.sheet.title)}</div></td><td>${esc(g.u.u.a)}</td><td>${esc(g.u.u.l)}</td></tr>`).join('');$('#secTable').hidden=false;
+  const fz=(lastSec.faults||[]).map(fl=>`<tr><td class="num">${(fl.t*D).toFixed(2)}</td><td colspan="3"><b style="color:#c4161c">Fay</b> (MTA diri fay haritası)${fl.name?' – '+esc(fl.name):''} · doğrultu ≈ K${fl.az}°</td></tr>`).join('');
+  $('#secTable tbody').innerHTML=fz+segs.filter(g=>g.u).map(g=>`<tr><td class="num">${(g.k0/(N-1)*D).toFixed(2)}–${(g.k1/(N-1)*D).toFixed(2)}</td><td><span class="code">${esc(g.u.u.c)}</span> ${esc(g.u.u.n)}<div class="muted" style="font-size:11px">${esc(g.u.sheet.title)}</div></td><td>${esc(g.u.u.a)}</td><td>${esc(g.u.u.l)}</td></tr>`).join('');$('#secTable').hidden=false;
 }
 $('#vex').onchange=drawSection;
 function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
